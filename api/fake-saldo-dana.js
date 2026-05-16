@@ -1,4 +1,4 @@
-import { Canvas, loadImage, FontLibrary } from 'skia-canvas';
+import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
 import { writeFileSync, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -13,7 +13,7 @@ async function loadFont(url, name) {
   const buf     = Buffer.from(await (await fetch(url)).arrayBuffer());
   const tmpPath = join(tmpdir(), `${name}-${Date.now()}.ttf`);
   writeFileSync(tmpPath, buf);
-  FontLibrary.use(name, tmpPath);
+  GlobalFonts.registerFromPath(tmpPath, name);
   return tmpPath;
 }
 
@@ -21,36 +21,36 @@ async function generate(angka) {
   const tmp1 = await loadFont('https://raw.githubusercontent.com/Ditzzx-vibecoder/Assets/main/Font/iconfont.ttf', 'FontRp');
   const tmp2 = await loadFont('https://raw.githubusercontent.com/Ditzzx-vibecoder/Assets/main/Font/f5803c-1772975107907.ttf', 'FontSaldo');
 
-  const bg      = await loadImage('https://raw.githubusercontent.com/Ditzzx-vibecoder/Assets/main/Image/_20260501192538912.jpg');
-  const eyeIcon = await loadImage('https://raw.githubusercontent.com/Ditzzx-vibecoder/Assets/main/Image/vision-off-svgrepo-com%20(1).svg');
+  const bg = await loadImage('https://raw.githubusercontent.com/Ditzzx-vibecoder/Assets/main/Image/_20260501192538912.jpg');
 
-  const canvas = new Canvas(bg.width, bg.height);
+  const canvas = createCanvas(bg.width, bg.height);
   const ctx    = canvas.getContext('2d');
 
   ctx.drawImage(bg, 0, 0);
 
+  // Tulis "Rp"
   ctx.font         = `${CONFIG.rp.fontSize}px FontRp`;
   ctx.fillStyle    = CONFIG.rp.color;
   ctx.textBaseline = 'top';
   ctx.fillText('Rp', CONFIG.rp.x, CONFIG.rp.y);
 
+  // Tulis nominal
   ctx.font         = `${CONFIG.saldo.fontSize}px FontSaldo`;
   ctx.fillStyle    = CONFIG.saldo.color;
   ctx.textBaseline = 'top';
   ctx.fillText(angka, CONFIG.saldo.x, CONFIG.saldo.y);
 
+  // Ikon mata (SVG tidak didukung @napi-rs/canvas, pakai karakter unicode)
   const textWidth = ctx.measureText(angka).width;
   const iconX     = CONFIG.saldo.x + textWidth + CONFIG.icon.gap;
-
-  ctx.save();
-  ctx.filter = 'brightness(0) invert(1)';
-  ctx.drawImage(eyeIcon, iconX, CONFIG.icon.y, CONFIG.icon.size, CONFIG.icon.size);
-  ctx.restore();
+  ctx.font      = `${CONFIG.icon.size}px sans-serif`;
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText('●', iconX, CONFIG.icon.y);
 
   try { unlinkSync(tmp1); } catch {}
   try { unlinkSync(tmp2); } catch {}
 
-  return await canvas.png;
+  return canvas.toBuffer('image/png');
 }
 
 export default async function handler(req, res) {
@@ -82,7 +82,7 @@ export default async function handler(req, res) {
     const buffer = await generate(angka);
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Content-Disposition', `inline; filename="dana_${raw}.png"`);
-    return res.status(200).send(Buffer.from(buffer));
+    return res.status(200).send(buffer);
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Gagal generate gambar.' });
   }
